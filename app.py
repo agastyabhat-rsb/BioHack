@@ -152,18 +152,47 @@ def extract_features(smiles):
 
 # --- UI Front-End ---
 def get_smiles_from_name(query):
-    """Heuristic resolution: queries PubChem if input lacks SMILES syntax."""
+    """Heuristic resolution with API fail-safes and demo caching."""
+    
+    # 1. Hardcoded Demo Cache (Prevents live-presentation disaster)
+    demo_cache = {
+        "aspirin": "CC(=O)OC1=CC=CC=C1C(=O)O",
+        "ibuprofen": "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
+        "benadryl": "CN(C)CCOC(C1=CC=CC=C1)C2=CC=CC=C2"
+    }
+    
+    clean_query = query.strip().lower()
+    if clean_query in demo_cache:
+        return demo_cache[clean_query]
+        
+    # 2. Geometric Heuristic (Detects SMILES syntax)
     if any(c in query for c in ['=', '#', '(', ')', '[', ']']):
         return query 
     
+    # 3. Secure API Request with Institutional Headers
     try:
         url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query}/property/CanonicalSMILES/JSON"
-        response = requests.get(url, timeout=5)
+        
+        # Identify the request to bypass NIH automated scraping blocks
+        headers = {
+            "User-Agent": "BioHackAR_App/1.0 (agastyabhat-rsb)"
+        }
+        
+        response = requests.get(url, headers=headers, timeout=5)
+        
         if response.status_code == 200:
             return response.json()['PropertyTable']['Properties'][0]['CanonicalSMILES']
-    except Exception:
+        else:
+            # Expose the exact API denial code to the UI
+            st.warning(f"NIH API Denial: Received Status Code {response.status_code}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        st.warning("NIH PubChem Server timed out. Try a direct SMILES string.")
         return None
-    return None
+    except Exception as e:
+        st.warning(f"Network Exception: {str(e)}")
+        return None
 
 # --- UI Front-End ---
 st.markdown("""
