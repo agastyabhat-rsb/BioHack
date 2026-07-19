@@ -219,32 +219,20 @@ def extract_features(smiles):
     return np.concatenate((fp_array, physical_descriptors)).reshape(1, -1)
 
 # --- UI Front-End ---
-st.markdown("""
-<div style='text-align: center; padding: 40px 20px; background: linear-gradient(90deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 128, 255, 0.05) 100%); border-radius: 12px; border: 2px solid rgba(0, 255, 255, 0.4); box-shadow: 0 0 30px rgba(0, 255, 255, 0.2); margin-bottom: 50px;'>
-    <h1 style='margin: 0; font-size: 72px;'>BioHackAR</h1>
-    <p style='color: #00d4ff; font-size: 26px; margin-top: 15px; font-family: Inter, sans-serif; font-weight: 500; letter-spacing: 1px;'>Advanced ADMET Property Prediction System</p>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<div class='info-text' style='margin-bottom: 40px; padding: 30px; background: rgba(30, 36, 66, 0.4); border-radius: 12px; border-left: 4px solid #00ffff;'>
-    <p style='margin: 0; font-size: 22px; line-height: 1.9;'>Before a new pharmaceutical drug can be approved, scientists must ensure it behaves safely in the human body. This validation process is called <strong style='color: #00ffff;'>ADMET</strong> (Absorption, Distribution, Metabolism, Excretion, and Toxicity).</p>
-    <p style='margin-top: 20px; font-size: 22px; line-height: 1.9;'>Instead of spending years and millions of dollars testing chemical compounds in a physical laboratory, this AI architecture analyzes the geometric spatial graph of a molecule and mathematically predicts its biological interactions.</p>
-</div>
-""", unsafe_allow_html=True)
-
+# --- Updated UI Front-End Section ---
 st.markdown("<h2>Molecular Input</h2>", unsafe_allow_html=True)
 st.markdown("<p style='font-size: 20px; margin-bottom: 25px;'>Enter a Chemical Name (e.g., Aspirin, Ibuprofen, Benadryl) OR a SMILES String:</p>", unsafe_allow_html=True)
 
-user_query = st.text_input(
-    "Chemical Input",
-    placeholder="Paracetamol",
-    label_visibility="collapsed"
-)
-
-col1, col2, col3 = st.columns([1, 1, 1])
-with col2:
-    predict_btn = st.button("Analyze Molecule")
+# Wrap input and button in a form
+with st.form(key="mol_form"):
+    user_query = st.text_input(
+        "Chemical Input",
+        placeholder="Paracetamol",
+        label_visibility="collapsed"
+    )
+    
+    # st.form_submit_button ensures the app waits for the click
+    predict_btn = st.form_submit_button("Analyze Molecule")
 
 if predict_btn and user_query:
     with st.spinner("Processing molecular structure..."):
