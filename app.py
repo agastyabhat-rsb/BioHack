@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import joblib
+import requests
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 from rdkit.Chem import AllChem
@@ -150,6 +151,21 @@ def extract_features(smiles):
     return np.concatenate((fp_array, physical_descriptors)).reshape(1, -1)
 
 # --- UI Front-End ---
+def get_smiles_from_name(query):
+    """Heuristic resolution: queries PubChem if input lacks SMILES syntax."""
+    if any(c in query for c in ['=', '#', '(', ')', '[', ']']):
+        return query 
+    
+    try:
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query}/property/CanonicalSMILES/JSON"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return response.json()['PropertyTable']['Properties'][0]['CanonicalSMILES']
+    except Exception:
+        return None
+    return None
+
+# --- UI Front-End ---
 st.markdown("""
 <div style='text-align: center; padding: 20px; margin-bottom: 30px;'>
     <h1 style='margin: 0; font-size: 42px;'>🧬 BioHackAR</h1>
@@ -157,37 +173,64 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-user_smiles = st.text_input("Enter SMILES String:", "CC(=O)OC1=CC=CC=C1C(=O)O")
+# 1. The Educational Context
+st.markdown("""
+### What is this tool?
+Before a new pharmaceutical drug can be approved, scientists must ensure it behaves safely in the human body. This validation process is called **ADMET** (Absorption, Distribution, Metabolism, Excretion, and Toxicity). 
+
+Instead of spending years and millions of dollars testing chemical compounds in a physical laboratory, this AI architecture analyzes the geometric spatial graph of a molecule and mathematically predicts its biological interactions instantly.
+""")
+st.markdown("---")
+
+# 2. The Smart Input Handler
+user_query = st.text_input("Enter a Chemical Name (e.g., Aspirin, Ibuprofen, Benadryl) OR a SMILES String:", "Aspirin")
 
 if st.button("🚀 Analyze Molecule"):
-    with st.spinner("🔄 Processing molecular structure..."):
-        features = extract_features(user_smiles)
+    with st.spinner("🔄 Interfacing with PubChem and mapping molecular topology..."):
         
-        if features is None:
-            st.error("Invalid SMILES string. RDKit could not parse the chemical graph.")
+        # 3. Dynamic Resolution
+        smiles = get_smiles_from_name(user_query)
+        
+        if not smiles:
+            st.error(f"Could not resolve '{user_query}' to a valid chemical structure. Please check the spelling or provide a direct SMILES string.")
         else:
-            st.success("✅ Topology mapped. Analysis complete.")
-            st.markdown("---")
+            if smiles != user_query:
+                st.info(f"🔍 **Resolved Name to SMILES:** `{smiles}`")
+                
+            features = extract_features(smiles)
             
-            # Semantic Data Split
-            classifications = {k: v for k, v in models.items() if k != 'Lipophilicity'}
-            regression = {k: v for k, v in models.items() if k == 'Lipophilicity'}
-            
-            # Output Layout
-            st.markdown("### 📊 Classification Targets")
-            c_cols = st.columns(3)
-            
-            # Dynamically populate classification metrics
-            for idx, (target, model) in enumerate(classifications.items()):
-                prob = model.predict_proba(features)[0][1]
-                with c_cols[idx % 3]:
-                    st.metric(label=target.upper(), value=f"{prob:.2%}")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            if regression:
-                st.markdown("### 📈 Physical Chemistry Targets")
-                pred = regression['Lipophilicity'].predict(features)[0]
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric(label="Lipophilicity (LogD)", value=f"{pred:.3f}")
+            if features is None:
+                st.error("Invalid chemical graph. RDKit could not parse the structure.")
+            else:
+                st.success("✅ Topology mapped. Inference complete.")
+                st.markdown("---")
+                
+                # 4. Semantic Data Split with Contextual Interpretations
+                classifications = {k: v for k, v in models.items() if k != 'Lipophilicity'}
+                regression = {k: v for k, v in models.items() if k == 'Lipophilicity'}
+                
+                metric_desc = {
+                    'hia': "Human Intestinal Absorption: The probability the drug successfully enters the bloodstream through the gut.",
+                    'bbb': "Blood-Brain Barrier: The probability the drug can penetrate the brain (critical for neurological drugs, bad for others).",
+                    'cyp3a4_sub': "CYP3A4 Substrate: The probability it is broken down by the primary liver enzyme.",
+                    'carcin': "Carcinogenicity: The probability the compound induces cellular mutation (cancer risk).",
+                    'herg': "hERG Toxicity: The probability of blocking cardiac channels, causing fatal heart arrhythmias."
+                }
+                
+                st.markdown("### 📊 Classification Targets")
+                c_cols = st.columns(3)
+                for idx, (target, model) in enumerate(classifications.items()):
+                    prob = model.predict_proba(features)[0][1]
+                    with c_cols[idx % 3]:
+                        st.metric(label=target.upper(), value=f"{prob:.2%}")
+                        st.caption(metric_desc.get(target.lower(), "Target parameter analyzed."))
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                if regression:
+                    st.markdown("### 📈 Physical Chemistry Targets")
+                    pred = regression['Lipophilicity'].predict(features)[0]
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(label="Lipophilicity (LogD)", value=f"{pred:.3f}")
+                        st.caption("Measures how well the drug dissolves in fats vs. water. Optimal oral drugs generally score between 1.0 and 3.0.")
