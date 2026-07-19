@@ -11,6 +11,34 @@ RDLogger.DisableLog('rdApp.*')
 
 # --- UI Configuration ---
 st.set_page_config(page_title="ADMET Predictor", layout="centered")
+
+# Inject Custom CSS for Aesthetics 
+st.markdown("""
+    <style>
+    /* Add a subtle background color and font styling */
+    .stApp {
+        background-color: #f4f7f6;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* Style the metric containers to look like modern cards */
+    div[data-testid="metric-container"] {
+        background-color: white;
+        border: 1px solid #e1e4e8;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    /* Highlight the main title */
+    h1 {
+        color: #2c3e50;
+        text-align: center;
+        padding-bottom: 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title("Molecular ADMET Pipeline")
 st.markdown("Predict pharmacokinetic properties from SMILES strings using hybrid XGBoost architecture.")
 
