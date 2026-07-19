@@ -152,48 +152,42 @@ def extract_features(smiles):
 
 # --- UI Front-End ---
 def get_smiles_from_name(query):
-    """Heuristic resolution with API fail-safes and demo caching."""
+    """Pure dynamic API resolution leveraging RDKit validation."""
+    query = query.strip()
     
-    # 1. Hardcoded Demo Cache (Prevents live-presentation disaster)
-    demo_cache = {
-        "aspirin": "CC(=O)OC1=CC=CC=C1C(=O)O",
-        "ibuprofen": "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
-        "benadryl": "CN(C)CCOC(C1=CC=CC=C1)C2=CC=CC=C2"
-    }
-    
-    clean_query = query.strip().lower()
-    if clean_query in demo_cache:
-        return demo_cache[clean_query]
+    # 1. The Native RDKit Test
+    # If RDKit can build a molecule graph from the string, it is already a valid SMILES.
+    mol = Chem.MolFromSmiles(query)
+    if mol is not None:
+        return query
         
-    # 2. Geometric Heuristic (Detects SMILES syntax)
-    if any(c in query for c in ['=', '#', '(', ')', '[', ']']):
-        return query 
-    
-    # 3. Secure API Request with Institutional Headers
+    # 2. The Pure API Fallback
+    # If RDKit fails, assume it is a common name and ping the NIH database dynamically.
     try:
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query}/property/CanonicalSMILES/JSON"
-        
-        # Identify the request to bypass NIH automated scraping blocks
-        headers = {
-            "User-Agent": "BioHackAR_App/1.0 (agastyabhat-rsb)"
-        }
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query}/property/IsomericSMILES,CanonicalSMILES/JSON"
+        headers = {"User-Agent": "BioHackAR_App/2.0 (agastyabhat-rsb)"}
         
         response = requests.get(url, headers=headers, timeout=5)
         
         if response.status_code == 200:
-            return response.json()['PropertyTable']['Properties'][0]['CanonicalSMILES']
+            data = response.json()
+            props = data.get('PropertyTable', {}).get('Properties', [{}])[0]
+            # Prioritize Isomeric (3D stereochemistry), fallback to Canonical
+            return props.get('IsomericSMILES') or props.get('CanonicalSMILES')
+            
+        elif response.status_code == 404:
+            st.warning(f"PubChem Database Miss: Could not find a chemical named '{query}'")
+            return None
         else:
-            # Expose the exact API denial code to the UI
-            st.warning(f"NIH API Denial: Received Status Code {response.status_code}")
+            st.warning(f"NIH API Error: Status {response.status_code}")
             return None
             
     except requests.exceptions.Timeout:
-        st.warning("NIH PubChem Server timed out. Try a direct SMILES string.")
+        st.error("NIH PubChem Server timed out. The API is currently unreachable.")
         return None
     except Exception as e:
-        st.warning(f"Network Exception: {str(e)}")
+        st.error(f"Network Exception: {str(e)}")
         return None
-
 # --- UI Front-End ---
 st.markdown("""
 <div style='text-align: center; padding: 20px; margin-bottom: 30px;'>
