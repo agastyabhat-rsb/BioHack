@@ -104,6 +104,28 @@ st.markdown("""
         padding: 20px;
         box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
     }
+    /* Force Native Metric Colors */
+    [data-testid="stMetricValue"] {
+        font-size: 38px !important;
+        color: #00ffff !important;
+        font-weight: 900 !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        font-size: 18px !important;
+        color: #b8c5d6 !important;
+        font-weight: 600 !important;
+        letter-spacing: 1px;
+    }
+    
+    /* Caption explanations */
+    [data-testid="stCaptionContainer"] {
+        color: #6a7f9f !important;
+        font-size: 14px !important;
+        line-height: 1.4 !important;
+        margin-top: -10px !important;
+        margin-bottom: 20px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -236,19 +258,31 @@ else:
                     classifications = {k: v for k, v in models.items() if k != 'Lipophilicity'}
                     regression = {k: v for k, v in models.items() if k == 'Lipophilicity'}
                     
-                    st.markdown("### Classification Targets")
+                    metric_desc = {
+                        'hia': "Probability of absorption through the human intestine.",
+                        'bbb': "Probability of penetrating the blood-brain barrier.",
+                        'cyp3a4_sub': "Probability of metabolization by the CYP3A4 liver enzyme.",
+                        'carcin': "Probability of inducing cellular mutation or cancer.",
+                        'herg': "Probability of blocking cardiac channels (arrhythmia risk)."
+                    }
+                    
+                    # Fix: Use pure HTML to avoid Streamlit Markdown parser collisions
+                    st.markdown("<h3 style='color: #00d4ff; font-family: Inter, sans-serif; margin-bottom: 20px;'>Classification Targets</h3>", unsafe_allow_html=True)
+                    
                     c_cols = st.columns(3)
                     for idx, (target, model) in enumerate(classifications.items()):
                         prob = model.predict_proba(features)[0][1]
                         with c_cols[idx % 3]:
                             st.metric(label=target.upper(), value=f"{prob:.2%}")
+                            st.caption(metric_desc.get(target.lower(), "Target parameter analyzed."))
                     
                     if regression:
-                        st.markdown("<br>### Physical Chemistry Targets", unsafe_allow_html=True)
+                        st.markdown("<br><h3 style='color: #00d4ff; font-family: Inter, sans-serif; margin-bottom: 20px;'>Physical Chemistry Targets</h3>", unsafe_allow_html=True)
                         pred = regression['Lipophilicity'].predict(features)[0]
                         col1, col2, col3 = st.columns(3)
                         with col1:
                             st.metric(label="Lipophilicity (LogD)", value=f"{pred:.3f}")
+                            st.caption("Fat vs. water solubility. Optimal oral range is typically 1.0 to 3.0.")
             else:
                 st.error("Could not parse name. Ensure spelling is correct.")
 
