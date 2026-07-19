@@ -143,13 +143,13 @@ models = load_models()
 def get_smiles_from_name(query):
     query = query.strip()
     
-    # 1. ATTEMPT SMILES PARSE
+    # 1. ATTEMPT SMILES PARSE (Strictly strips all spaces to fix fragmentation)
     clean_smiles = "".join(query.split())
     mol = Chem.MolFromSmiles(clean_smiles)
     if mol is not None:
         return clean_smiles
         
-    # 2. OFFLINE FUZZY DICTIONARY (Bypasses NIH Firewall)
+    # 2. OFFLINE FUZZY DICTIONARY (Bypasses Firewalls instantly)
     local_db = {
         "aspirin": "CC(=O)OC1=CC=CC=C1C(=O)O",
         "ibuprofen": "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
@@ -163,18 +163,24 @@ def get_smiles_from_name(query):
     if matches:
         return local_db[matches[0]]
         
-    # 3. API FALLBACK
+    # 3. NCI CIR API FALLBACK (Bypassing PubChem Blacklist entirely)
     try:
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query}/property/IsomericSMILES,CanonicalSMILES/JSON"
-        headers = {"User-Agent": "BioHackAR_App/4.0"}
-        response = requests.get(url, headers=headers, timeout=5)
+        # Preserves internal spaces for proper chemical nomenclature searching
+        url = f"https://cactus.nci.nih.gov/chemical/structure/{query}/smiles"
+        
+        # Strict 3.0 second kill-switch to prevent application freezing
+        response = requests.get(url, timeout=3)
         
         if response.status_code == 200:
-            data = response.json()
-            props = data.get('PropertyTable', {}).get('Properties', [{}])[0]
-            return props.get('IsomericSMILES') or props.get('CanonicalSMILES')
-    except:
+            # The NCI database returns raw text, bypassing the need for JSON extraction
+            return response.text.strip()
+            
+    except requests.exceptions.Timeout:
+        st.error("NCI Database timeout. Network congestion detected.")
         return None
+    except Exception:
+        return None
+        
     return None
 
 def extract_features(smiles):
