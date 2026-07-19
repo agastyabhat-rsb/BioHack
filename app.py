@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 import numpy as np
 import joblib
@@ -166,8 +167,8 @@ try:
 except FileNotFoundError:
     st.error("Model file 'admet_models.pkl' not found. Ensure it is committed and pushed.")
     st.stop()
-def get_smiles_from_name(query):
-    """Pure dynamic API resolution with whitespace sanitization."""
+def get_smiles_from_name(query, max_retries=3):
+    """Dynamic API resolution with retries and a fallback API."""
     # 1. Sanitize: Remove all spaces for RDKit parsing
     clean_query = "".join(query.strip().split())
     
@@ -176,31 +177,59 @@ def get_smiles_from_name(query):
     if mol is not None:
         return clean_query
         
-    # 3. Pure API Fallback (Using original query for naming lookup)
+    # 3. Primary API: PubChem with Retry Logic
+    pubchem_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query.strip()}/property/IsomericSMILES,CanonicalSMILES/JSON"
+    headers = {"User-Agent": "BioHackAR_App/3.0 (agastyabhat-rsb)"}
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(pubchem_url, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                props = data.get('PropertyTable', {}).get('Properties', [{}])[0]
+                return props.get('IsomericSMILES') or props.get('CanonicalSMILES')
+                
+            elif response.status_code == 404:
+                st.warning(f"PubChem Database Miss: Could not find a chemical named '{query.strip()}'")
+                return None
+                
+            elif response.status_code in [502, 503, 504]:
+                # Server is temporarily overloaded. Wait and try again.
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Sleeps for 1s, then 2s...
+                    continue
+                else:
+                    st.warning("PubChem API is currently overloaded. Trying fallback database...")
+                    break # Exhausted retries, move to fallback
+                    
+            else:
+                st.warning(f"NIH API Error: Status {response.status_code}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            st.warning("NIH PubChem Server timed out. Trying fallback database...")
+            break
+        except Exception as e:
+            st.error(f"Network Exception: {str(e)}")
+            return None
+
+    # 4. Fallback API: NCI/CADD Chemical Identifier Resolver
     try:
-        # Use strip() on original query, but keep original spaces for names
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query.strip()}/property/IsomericSMILES,CanonicalSMILES/JSON"
-        headers = {"User-Agent": "BioHackAR_App/3.0 (agastyabhat-rsb)"}
+        fallback_url = f"https://cactus.nci.nih.gov/chemical/structure/{query.strip()}/smiles"
+        fallback_response = requests.get(fallback_url, timeout=5)
         
-        response = requests.get(url, headers=headers, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            props = data.get('PropertyTable', {}).get('Properties', [{}])[0]
-            return props.get('IsomericSMILES') or props.get('CanonicalSMILES')
-            
-        elif response.status_code == 404:
-            st.warning(f"PubChem Database Miss: Could not find a chemical named '{query.strip()}'")
-            return None
+        if fallback_response.status_code == 200:
+            return fallback_response.text.strip()
         else:
-            st.warning(f"NIH API Error: Status {response.status_code}")
+            st.error(f"Resolution Failed: Neither PubChem nor NCI APIs could resolve '{query}'.")
             return None
             
-    except requests.exceptions.Timeout:
-        st.error("NIH PubChem Server timed out. The API is currently unreachable.")
-        return None
     except Exception as e:
-        st.error(f"Network Exception: {str(e)}")
+        st.error(f"Fallback API Error: {str(e)}")
         return None
 
 def extract_features(smiles):
