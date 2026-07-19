@@ -166,18 +166,21 @@ try:
 except FileNotFoundError:
     st.error("Model file 'admet_models.pkl' not found. Ensure it is committed and pushed.")
     st.stop()
-
 def get_smiles_from_name(query):
-    """Pure dynamic API resolution leveraging RDKit validation."""
-    query = query.strip()
+    """Pure dynamic API resolution with whitespace sanitization."""
+    # 1. Sanitize: Remove all spaces for RDKit parsing
+    clean_query = "".join(query.strip().split())
     
-    mol = Chem.MolFromSmiles(query)
+    # 2. RDKit Test (Post-Sanitization)
+    mol = Chem.MolFromSmiles(clean_query)
     if mol is not None:
-        return query
+        return clean_query
         
+    # 3. Pure API Fallback (Using original query for naming lookup)
     try:
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query}/property/IsomericSMILES,CanonicalSMILES/JSON"
-        headers = {"User-Agent": "BioHackAR_App/2.0 (agastyabhat-rsb)"}
+        # Use strip() on original query, but keep original spaces for names
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{query.strip()}/property/IsomericSMILES,CanonicalSMILES/JSON"
+        headers = {"User-Agent": "BioHackAR_App/3.0 (agastyabhat-rsb)"}
         
         response = requests.get(url, headers=headers, timeout=5)
         
@@ -187,7 +190,7 @@ def get_smiles_from_name(query):
             return props.get('IsomericSMILES') or props.get('CanonicalSMILES')
             
         elif response.status_code == 404:
-            st.warning(f"PubChem Database Miss: Could not find a chemical named '{query}'")
+            st.warning(f"PubChem Database Miss: Could not find a chemical named '{query.strip()}'")
             return None
         else:
             st.warning(f"NIH API Error: Status {response.status_code}")
